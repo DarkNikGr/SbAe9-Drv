@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (c) 2026 DarkNikGr
+# The AE-9's udev model is the CA0132 chipset string.  Present it as
+# "Sound Blaster AE-9" instead.
+SUBSYSTEM=="sound", KERNEL=="card*", ATTRS{vendor}=="0x1102", ATTRS{device}=="0x0010", ATTRS{subsystem_device}=="0x0071", ENV{ID_MODEL_FROM_DATABASE}="Sound Blaster AE-9"

@@ -898,7 +898,7 @@ static int creative_ae9_opt_open(struct snd_pcm_substream *substream)
 			   SNDRV_PCM_INFO_INTERLEAVED;
 	if (pcm_nowakeup)
 		runtime->hw.info |= SNDRV_PCM_INFO_NO_PERIOD_WAKEUP;
-	runtime->hw.formats = SNDRV_PCM_FMTBIT_S32_LE;
+	runtime->hw.formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S32_LE;
 	runtime->hw.channels_min = 2;
 	runtime->hw.channels_max = 2;
 	runtime->hw.rates = SNDRV_PCM_RATE_44100 | SNDRV_PCM_RATE_48000 |
@@ -1006,7 +1006,9 @@ static int creative_ae9_opt_prepare(struct snd_pcm_substream *substream)
 	}
 	creative_hda_writel(chip, base + AZX_REG_SD_CBL, buf_size);
 	creative_hda_writew(chip, base + AZX_REG_SD_LVI, runtime->periods - 1);
-	format = creative_ae9_stream_format(2, 24, runtime->rate);
+	format = creative_ae9_stream_format(2,
+			runtime->format == SNDRV_PCM_FORMAT_S16_LE ? 16 : 24,
+			runtime->rate);
 	creative_hda_writew(chip, base + AZX_REG_SD_FORMAT, format);
 	creative_hda_writel(chip, base + AZX_REG_SD_BDLPL,
 			    lower_32_bits(chip->opt_bdl_dma));

@@ -207,6 +207,14 @@ struct creative_chip {
 	bool			spdif_out;	/* "Optical Out Playback Switch" */
 	u16			pb_format;	/* SD_FMT of the open playback, 0 none */
 	u32			spdif_out_sent;	/* 0x05 binding last sent (0 = none) */
+	/* separate optical playback PCM (PCM device 3) */
+	struct snd_pcm_substream *opt_substream;
+	void			*opt_bdl_raw;
+	void			*opt_bdl;
+	dma_addr_t		opt_bdl_dma;
+	size_t			opt_bdl_size;
+	unsigned int		opt_period_size;
+	u16			opt_format;	/* SD_FMT of the open optical stream, 0 none */
 	/* extra capture devices (creative_ae9_pcm.c): [0] optical in (PCM
 	 * device 1), [1] What U Hear (device 2) */
 	struct ae9_xcap_state {
@@ -426,6 +434,7 @@ u16 creative_ae9_stream_format(unsigned int channels, unsigned int bits,
 void creative_ae9_cap_replay(struct creative_chip *chip, bool start);
 void creative_ae9_cap_irq(struct creative_chip *chip);
 void creative_ae9_xcap_irq(struct creative_chip *chip, unsigned int i);
+void creative_ae9_opt_irq(struct creative_chip *chip);
 extern unsigned int ae9_sentinel_clear;
 int creative_dsp_scp_send(struct creative_chip *chip, u32 hdr,
 			  const u32 *data, unsigned int count);

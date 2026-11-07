@@ -1081,7 +1081,7 @@ static void creative_ae9_opt_new(struct creative_chip *chip)
 	struct snd_pcm *pcm;
 	int ret;
 
-	ret = snd_pcm_new(chip->card, "AE-9 Optical Out", 3, 1, 0, &pcm);
+	ret = snd_pcm_new(chip->card, "AE-9 Optical Out", 4, 1, 0, &pcm);
 	if (ret < 0) {
 		dev_warn(chip->dev, "AE-9 Optical Out device not added (%d)\n", ret);
 		return;

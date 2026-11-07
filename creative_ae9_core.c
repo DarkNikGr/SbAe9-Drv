@@ -4205,6 +4205,10 @@ static irqreturn_t creative_ae9_irq_handler(int irq, void *dev_id)
 	if (intsts & 0x8)
 		creative_ae9_xcap_irq(chip, 2);
 
+	/* separate optical playback: stream descriptor index 5 */
+	if (intsts & (1 << 5))
+		creative_ae9_opt_irq(chip);
+
 	/* Acknowledge stream interrupts and notify ALSA of period completion */
 	if (intsts & AZX_INT_ALL_STREAM & ~0xf) {
 		u8 sd_sts = readb(chip->hda_regs +

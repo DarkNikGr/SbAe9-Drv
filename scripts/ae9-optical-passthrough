@@ -1,0 +1,33 @@
+#!/bin/sh
+# Play a file's audio to the AE-9 optical output as a Dolby Digital or DTS
+# bitstream (IEC61937), straight to the hardware PCM (hw:AE9,4).
+#
+#   ae9-optical-passthrough FILE [hw:AE9,4]
+#
+# AC-3 is passed through; DTS is passed through; anything else (AAC, FLAC,
+# PCM...) is encoded to Dolby Digital 5.1 640 kbps / 48 kHz. mpv can't do
+# this: it appends AES0..AES3 to the ALSA device and the raw hw device
+# rejects them.
+set -u
+file=${1:?usage: ae9-optical FILE [hw:AE9,4]}
+dev=${2:-hw:AE9,4}
+
+codec=$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of csv=p=0 "$file")
+rate=$(ffprobe -v error -select_streams a:0 -show_entries stream=sample_rate -of csv=p=0 "$file")
+
+# let PipeWire's optical sink go, if it is holding the PCM
+pactl suspend-sink alsa_output.ae9_optical 1 >/dev/null 2>&1 || true
+sleep 1
+
+case "$codec" in
+  ac3|dts)
+    echo "$codec $rate Hz: passing through" >&2
+    ffmpeg -v error -i "$file" -map 0:a:0 -c:a copy -f spdif - \
+      | aplay -D "$dev" -f S16_LE -c 2 -r "$rate" -q
+    ;;
+  *)
+    echo "${codec:-?}: encoding to Dolby Digital 5.1 640k/48k" >&2
+    ffmpeg -v error -i "$file" -map 0:a:0 -vn -c:a ac3 -b:a 640k -ar 48000 -ac 6 -f spdif - \
+      | aplay -D "$dev" -f S16_LE -c 2 -r 48000 -q
+    ;;
+esac

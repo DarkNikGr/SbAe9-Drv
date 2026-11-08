@@ -46,6 +46,7 @@
 #include "creative_ae9.h"
 
 #define FX_MID_OUT	0x96
+#define FX_MID_IN	0x95	/* CrystalVoice, the mic input effects */
 #define FX_MID_MASTER	0x80
 #define FX_MID_SPKEQ	0x8f
 
@@ -339,6 +340,51 @@ static bool fx_ready(struct creative_chip *chip)
 	return chip->corb_buf && chip->dsp_done;
 }
 
+/*
+ * CrystalVoice, the mic side of the DSP (module 0x95, the input effects).
+ * Same requests as the kernel's CA0132 driver's input effects; the AE-9's
+ * DSP accepts them. gated by the CrystalVoice switch, as in Windows.
+ */
+static void fx_cv_apply_locked(struct creative_chip *chip)
+{
+	struct creative_ae9_fx *fx = &chip->fx;
+	bool cv = fx->cv;
+
+	fx_send(chip, FX_MID_IN, 0x00, fx_f32(cv && fx->cv_ec, 1), false);
+	if (cv && fx->cv_ec) {
+		fx_send(chip, FX_MID_IN, 0x01, 0x3F3A9692, false);
+		fx_send(chip, FX_MID_IN, 0x02, 0, false);
+		fx_send(chip, FX_MID_IN, 0x03, 0, false);
+	}
+	fx_send(chip, FX_MID_IN, 0x04, fx_f32(cv && fx->cv_nr, 1), false);
+	fx_send(chip, FX_MID_IN, 0x05, fx_f32(fx->cv_nr_level, 100), false);
+	fx_send(chip, FX_MID_IN, 0x06, fx_f32(cv && fx->cv_vf, 1), false);
+	if (cv && fx->cv_vf) {
+		fx_send(chip, FX_MID_IN, 0x07, 0x3D7DF3B6, false);
+		fx_send(chip, FX_MID_IN, 0x08, 0x41F00000, false);
+		fx_send(chip, FX_MID_IN, 0x09, 0x41F00000, false);
+	}
+	fx_send(chip, FX_MID_IN, 0x2c, fx_f32(cv && fx->cv_svm, 1), false);
+	fx_send(chip, FX_MID_IN, 0x2d, fx_f32(fx->cv_svm_level, 100), false);
+	fx_send(chip, FX_MID_IN, 0x0a, fx_f32(cv && fx->cv_vfx, 1), false);
+}
+
+static void fx_cv_apply(struct creative_chip *chip, bool log)
+{
+	struct creative_ae9_fx *fx = &chip->fx;
+
+	if (!fx_ready(chip) || fx->dead)
+		return;
+	mutex_lock(&chip->replay_mutex);
+	fx_cv_apply_locked(chip);
+	creative_dsp_chipio_addr_invalidate();
+	mutex_unlock(&chip->replay_mutex);
+	if (log)
+		dev_info(chip->dev, "CrystalVoice %s (Noise Reduction %d @%u%%, Echo Cancellation %d, Voice Focus %d, Mic SVM %d @%u%%, VoiceFX %d)\n",
+			 fx->cv ? "on" : "off", fx->cv_nr, fx->cv_nr_level,
+			 fx->cv_ec, fx->cv_vf, fx->cv_svm, fx->cv_svm_level, fx->cv_vfx);
+}
+
 /* Windows' SBX profile sequence; with SBX off, everything off. */
 static void fx_apply_all_locked(struct creative_chip *chip)
 {
@@ -391,6 +437,8 @@ static void fx_apply_all_locked(struct creative_chip *chip)
 		fx_send(chip, FX_MID_OUT, 0x0a, fx_f32(fx->eq[0], 10), false);
 	fx_send(chip, FX_MID_OUT, 0x09, fx_f32(on, 1), false);
 	fx_send(chip, FX_MID_OUT, 0x3a, 0, false);
+	/* the mic side is independent of Direct Mode/SBX: keep it in step */
+	fx_cv_apply_locked(chip);
 }
 
 static void fx_apply_all(struct creative_chip *chip)
@@ -508,6 +556,9 @@ void creative_ae9_fx_init(struct creative_chip *chip)
 	fx->direct = true;
 	fx->spk = fx_spk_cfg == 1 ? 0 : 1;
 	fx->xover = XOVER_DEF;
+	fx->cv_nr = true;		/* Windows' default: NR on, CrystalVoice off */
+	fx->cv_nr_level = 50;
+	fx->cv_svm_level = 74;
 	for (i = 0; i < FX_COUNT; i++) {
 		fx->on[i] = fx_def_on[i];
 		fx->level[i] = fx_def_lvl[i];
@@ -519,7 +570,8 @@ void creative_ae9_fx_init(struct creative_chip *chip)
 /* ------------------------------------------------------------------ */
 
 enum { K_SBX, K_ON, K_LVL, K_SVMODE, K_EQON, K_EQ, K_PRESET, K_SCOUT, K_DIRECT, K_SPK,
-       K_REDIR, K_XOVER, K_SUBGAIN, K_SPKLVL, K_SPKDIST, K_HPPROF };
+       K_REDIR, K_XOVER, K_SUBGAIN, K_SPKLVL, K_SPKDIST, K_HPPROF,
+       K_CV, K_CV_NR, K_CV_NRLVL, K_CV_EC, K_CV_VF, K_CV_SVM, K_CV_SVMLVL, K_CV_VFX };
 #define PV(k, i)	((k) << 8 | (i))
 #define PV_K(pv)	((pv) >> 8)
 #define PV_I(pv)	((pv) & 0xff)
@@ -569,6 +621,8 @@ static int fx_info(struct snd_kcontrol *kc, struct snd_ctl_elem_info *ui)
 	switch (PV_K(kc->private_value)) {
 	case K_SBX: case K_ON: case K_EQON: case K_SCOUT: case K_DIRECT:
 	case K_REDIR: case K_SUBGAIN:
+	case K_CV: case K_CV_NR: case K_CV_EC: case K_CV_VF: case K_CV_SVM:
+	case K_CV_VFX:
 		return snd_ctl_boolean_mono_info(kc, ui);
 	case K_XOVER: case K_SPKLVL: case K_SPKDIST: {
 		static const struct { s16 min, max, step; } r[] = {
@@ -634,6 +688,14 @@ static int fx_get(struct snd_kcontrol *kc, struct snd_ctl_elem_value *uv)
 	case K_SPKLVL:	*v = fx->spk_level[i]; break;
 	case K_SPKDIST:	*v = fx->spk_dist[i]; break;
 	case K_HPPROF:	uv->value.enumerated.item[0] = fx->hp_profile; break;
+	case K_CV:	*v = fx->cv; break;
+	case K_CV_NR:	*v = fx->cv_nr; break;
+	case K_CV_NRLVL: *v = fx->cv_nr_level; break;
+	case K_CV_EC:	*v = fx->cv_ec; break;
+	case K_CV_VF:	*v = fx->cv_vf; break;
+	case K_CV_SVM:	*v = fx->cv_svm; break;
+	case K_CV_SVMLVL: *v = fx->cv_svm_level; break;
+	case K_CV_VFX:	*v = fx->cv_vfx; break;
 	}
 	return 0;
 }
@@ -678,6 +740,7 @@ static void fx_update_active(struct creative_chip *chip)
 		struct snd_kcontrol *kc = fx->kc[i];
 		unsigned int k = PV_K(kc->private_value), old = kc->vd[0].access;
 		bool active = k == K_DIRECT ? true :
+			      k >= K_CV ? fx_ready(chip) && !fx->dead :
 			      k == K_SBX || k >= K_SPK ? !fx->direct : fx_eff(fx);
 
 		if (active)
@@ -905,6 +968,36 @@ static int fx_put(struct snd_kcontrol *kc, struct snd_ctl_elem_value *uv)
 			fx_apply_all(chip);
 		fx_notify_others(chip, kc);
 		return 1;
+	case K_CV: case K_CV_NR: case K_CV_EC: case K_CV_VF: case K_CV_SVM:
+	case K_CV_VFX: {
+		bool *flag = PV_K(kc->private_value) == K_CV ? &fx->cv :
+			     PV_K(kc->private_value) == K_CV_NR ? &fx->cv_nr :
+			     PV_K(kc->private_value) == K_CV_EC ? &fx->cv_ec :
+			     PV_K(kc->private_value) == K_CV_VF ? &fx->cv_vf :
+			     PV_K(kc->private_value) == K_CV_SVM ? &fx->cv_svm :
+			     &fx->cv_vfx;
+
+		if (!!v == *flag)
+			return 0;
+		*flag = !!v;
+		fx_cv_apply(chip, true);
+		fx_update_active(chip);
+		return 1;
+	}
+	case K_CV_NRLVL:
+		v = clamp_t(long, v, 0, 100);
+		if (v == fx->cv_nr_level)
+			return 0;
+		fx->cv_nr_level = v;
+		fx_cv_apply(chip, false);
+		return 1;
+	case K_CV_SVMLVL:
+		v = clamp_t(long, v, 0, 100);
+		if (v == fx->cv_svm_level)
+			return 0;
+		fx->cv_svm_level = v;
+		fx_cv_apply(chip, false);
+		return 1;
 	}
 	return 0;
 }
@@ -1057,6 +1150,23 @@ int creative_ae9_fx_controls_add(struct creative_chip *chip)
 	}
 	if (!err)
 		err = fx_add(chip, "Headphone Profile", K_HPPROF, 0);
+	/* CrystalVoice, the mic input effects (DSP module 0x95) */
+	if (!err)
+		err = fx_add(chip, "CrystalVoice Switch", K_CV, 0);
+	if (!err)
+		err = fx_add(chip, "CrystalVoice Noise Reduction Switch", K_CV_NR, 0);
+	if (!err)
+		err = fx_add(chip, "CrystalVoice Noise Reduction Volume", K_CV_NRLVL, 0);
+	if (!err)
+		err = fx_add(chip, "CrystalVoice Echo Cancellation Switch", K_CV_EC, 0);
+	if (!err)
+		err = fx_add(chip, "CrystalVoice Voice Focus Switch", K_CV_VF, 0);
+	if (!err)
+		err = fx_add(chip, "CrystalVoice Mic SVM Switch", K_CV_SVM, 0);
+	if (!err)
+		err = fx_add(chip, "CrystalVoice Mic SVM Volume", K_CV_SVMLVL, 0);
+	if (!err)
+		err = fx_add(chip, "CrystalVoice VoiceFX Switch", K_CV_VFX, 0);
 	fx_update_active(chip);
 	return err;
 }

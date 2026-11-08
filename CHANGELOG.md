@@ -3,6 +3,18 @@
 Driver for the Creative Sound Blaster AE-9 (out of tree). Pre-releases,
 tested on two cards (IDT bridge `10e3:8111`; ASMedia bridge `1b21:1080` since 0.9.8).
 
+## Unreleased
+
+### Added
+
+- **CrystalVoice**, the DSP's mic input effects (module 0x95, the requests
+  the kernel's CA0132 driver uses; the AE-9's DSP accepts them): Noise
+  Reduction (switch + level), Echo Cancellation, Voice Focus, Mic Smart
+  Volume (switch + level) and VoiceFX, all gated by a CrystalVoice master
+  switch. They act on the mic whatever Direct Mode is set to, and are
+  re-sent with every DSP profile change. Defaults: CrystalVoice off, Noise
+  Reduction on at 50%.
+
 ## 0.10.1 (2026-11-07)
 Boots right every time, headphone profiles that hold up, and the head unit's rear RCA input. 🔌
 Pairs with [SbAe9-SBC v0.13.0](https://github.com/3xHelix/SbAe9-SBC) and [SbAe9-AudioMon v0.4.0](https://github.com/3xHelix/SbAe9-AudioMon).

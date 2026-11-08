@@ -246,6 +246,15 @@ struct creative_chip {
 		u16		spk_dist[6];	/* cm of delay */
 		u8		hp_profile;	/* headphone profile (fx.c), 0 = off */
 		u8		hp_loaded;	/* profile the DSP holds, 0 = none */
+		/* CrystalVoice input effects (mic), DSP module 0x95 */
+		bool		cv;		/* master switch */
+		bool		cv_nr;		/* noise reduction */
+		u8		cv_nr_level;	/* 0..100 */
+		bool		cv_ec;		/* echo cancellation */
+		bool		cv_vf;		/* voice focus */
+		bool		cv_svm;		/* mic smart volume */
+		u8		cv_svm_level;	/* 0..100 */
+		bool		cv_vfx;		/* voice fx */
 		bool		scout;
 		bool		dead;		/* DSP stopped answering */
 		unsigned int	fails;

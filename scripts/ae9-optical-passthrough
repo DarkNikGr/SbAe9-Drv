@@ -9,7 +9,7 @@
 # this: it appends AES0..AES3 to the ALSA device and the raw hw device
 # rejects them.
 set -u
-file=${1:?usage: ae9-optical FILE [hw:AE9,4]}
+file=${1:?usage: ae9-optical-passthrough FILE [hw:AE9,4]}
 dev=${2:-hw:AE9,4}
 
 codec=$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of csv=p=0 "$file")
